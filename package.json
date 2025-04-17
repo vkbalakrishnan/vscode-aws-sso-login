@@ -1,0 +1,101 @@
+{
+  "name": "aws-sso-login",
+  "displayName": "AWS SSO Login",
+  "version": "1.0.0",
+  "description": "VS Code extension to login to AWS SSO with a specific profile",
+  "main": "./extension.js",
+  "publisher": "aws-sso-login",
+  "engines": {
+    "vscode": "^1.99.1"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:awsSsoLogin.login",
+    "onCommand:awsSsoLogin.test"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "awsSsoLogin.login",
+        "title": "AWS SSO: Login with Profile"
+      },
+      {
+        "command": "awsSsoLogin.test",
+        "title": "AWS SSO: Test"
+      }
+    ],
+    "configuration": {
+      "title": "AWS SSO Login",
+      "properties": {
+        "awsSsoLogin.profiles": {
+          "type": "array",
+          "default": [],
+          "description": "List of AWS SSO profiles",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "startUrl",
+              "region",
+              "accountId",
+              "roleName"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Profile name"
+              },
+              "startUrl": {
+                "type": "string",
+                "description": "AWS SSO start URL"
+              },
+              "region": {
+                "type": "string",
+                "description": "AWS region"
+              },
+              "accountId": {
+                "type": "string",
+                "description": "AWS account ID"
+              },
+              "roleName": {
+                "type": "string",
+                "description": "AWS role name"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "echo Compiled successfully",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "keywords": [
+    "aws",
+    "sso",
+    "login",
+    "profile"
+  ],
+  "author": "vkbalakrishnan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:vkbalakrishnan/vscode-aws-sso-login.git"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sso": "^3.787.0",
+    "@aws-sdk/client-sso-oidc": "^3.787.0",
+    "aws-sdk": "^2.1692.0"
+  },
+  "devDependencies": {
+    "@types/node": "^14.0.0",
+    "@types/vscode": "^1.99.1",
+    "@vscode/vsce": "^3.3.2",
+    "vscode": "^1.1.37"
+  }
+}
