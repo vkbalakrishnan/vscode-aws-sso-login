@@ -29,6 +29,9 @@ jobs:
     - name: Compile extension
       run: npm run compile
     
+    - name: Install vsce
+      run: npm install -g @vscode/vsce
+    
     - name: Package extension
       run: npm run package
     
