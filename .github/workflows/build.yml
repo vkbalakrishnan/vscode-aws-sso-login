@@ -23,8 +23,10 @@ jobs:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
     
-    - name: Install dependencies
-      run: npm ci
+    - name: Clean install dependencies
+      run: |
+        rm -rf node_modules
+        npm install
     
     - name: Compile extension
       run: npm run compile
@@ -33,7 +35,7 @@ jobs:
       run: npm install -g @vscode/vsce
     
     - name: Package extension
-      run: npm run package
+      run: vsce package --no-dependencies
     
     - name: Upload extension artifact
       uses: actions/upload-artifact@v4
