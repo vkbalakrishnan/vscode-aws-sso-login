@@ -94,6 +94,26 @@ The extension:
 4. Updates your AWS credentials file with the temporary credentials
 5. Shows a notification with the credential expiration time
 
+## Release Process
+
+To create a new release of the extension:
+
+1. Update the version number in `package.json`
+2. Commit and push your changes to the main branch
+3. Create and push a new tag with the version number:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+4. The GitHub Actions workflow will automatically:
+   - Build the extension
+   - Create a GitHub release
+   - Attach the VSIX file to the release
+
+To publish to the VS Code Marketplace:
+1. Uncomment the publishing step in `.github/workflows/release.yml`
+2. Add a repository secret called `VSCE_PAT` with your Visual Studio Marketplace Personal Access Token
+
 ## License
 
 MIT
