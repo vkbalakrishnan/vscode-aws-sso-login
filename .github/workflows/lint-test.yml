@@ -1,0 +1,81 @@
+name: Lint and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      id: npm-cache
+      with:
+        path: |
+          **/node_modules
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+    
+    - name: Install dependencies
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      run: npm ci
+    
+    # Add linting when you add ESLint to your project
+    # - name: Lint code
+    #   run: npm run lint
+
+  # This job can be expanded when you add tests to your project
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+    
+    - name: Cache dependencies
+      uses: actions/cache@v4
+      id: npm-cache
+      with:
+        path: |
+          **/node_modules
+        key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+    
+    - name: Install dependencies
+      if: steps.npm-cache.outputs.cache-hit != 'true'
+      run: npm ci
+    
+    # Add test command when you add tests to your project
+    # - name: Run tests
+    #   run: npm test
+    
+    # For now, just check if the test files exist
+    - name: Verify test files
+      run: |
+        if [ -f "test-sso-profiles.js" ] && [ -f "test-aws-config-parser.js" ]; then
+          echo "Test files exist"
+        else
+          echo "Test files not found"
+          exit 1
+        fi
