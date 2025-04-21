@@ -1,0 +1,71 @@
+name: Version Bump
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version_increment:
+        description: 'Version increment type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      
+      - name: Get current version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Determine version increment
+        id: version_increment
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            INCREMENT="${{ github.event.inputs.version_increment }}"
+          else
+            INCREMENT="patch"
+          fi
+          echo "increment=$INCREMENT" >> $GITHUB_OUTPUT
+      
+      - name: Bump version
+        id: bump_version
+        run: |
+          npm version ${{ steps.version_increment.outputs.increment }} --no-git-tag-version
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: bump version to ${{ steps.bump_version.outputs.new_version }}"
+          title: "chore: bump version to ${{ steps.bump_version.outputs.new_version }}"
+          body: |
+            This PR bumps the version from ${{ steps.current_version.outputs.current_version }} to ${{ steps.bump_version.outputs.new_version }}.
+            
+            This is an automated PR created after a release was published.
+          branch: version-bump-${{ steps.bump_version.outputs.new_version }}
+          base: main
+          labels: version-bump
