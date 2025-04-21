@@ -5,43 +5,33 @@ on:
     tags:
       - 'v*' # Run workflow on version tags, e.g. v1.0.0
 
+permissions:
+  contents: write # Needed for creating GitHub releases
+
 jobs:
+  # Reuse the build workflow
   build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Needed for creating GitHub releases
-
-    strategy:
-      matrix:
-        node-version: [20.x]
-
+    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    
-    - name: Clean install dependencies
-      run: npm install
-    
-    - name: Compile extension
-      run: npm run compile
-    
-    - name: Install vsce
-      run: npm install -g @vscode/vsce
-    
-    - name: Package extension
-      run: vsce package --no-dependencies
+    - name: Checkout code
+      uses: actions/checkout@v4
       
+    - name: Download extension artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: aws-sso-login-extension
+        path: ./
+    
     - name: Get version from tag
       id: get_version
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
     
     - name: Create GitHub Release
-      id: create_release
       uses: softprops/action-gh-release@v1
       with:
         name: AWS SSO Login v${{ steps.get_version.outputs.VERSION }}
@@ -52,6 +42,11 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    # Uncomment the following step if you want to publish to VSCode Marketplace
+    # Uncomment and use this step when ready to publish to VSCode Marketplace
+    # - name: Setup Node.js
+    #   uses: actions/setup-node@v4
+    #   with:
+    #     node-version: 20
+    
     # - name: Publish to Visual Studio Marketplace
-    #   run: vsce publish -p ${{ secrets.VSCE_PAT }}
+    #   run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}

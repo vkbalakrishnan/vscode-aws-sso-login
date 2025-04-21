@@ -94,6 +94,27 @@ The extension:
 4. Updates your AWS credentials file with the temporary credentials
 5. Shows a notification with the credential expiration time
 
+## CI/CD Process
+
+This project uses GitHub Actions for continuous integration and delivery:
+
+### Workflows
+
+- **Build**: Runs on every push to main and pull requests. Compiles and packages the extension.
+- **Lint and Test**: Verifies code quality and runs tests.
+- **Release**: Triggered when a tag is pushed. Creates a GitHub release with the packaged extension.
+- **Dependency Updates**: Runs weekly to check for dependency updates and creates PRs if needed.
+- **CodeQL Analysis**: Performs security analysis on the codebase.
+- **Stale Issues**: Automatically manages stale issues and pull requests.
+
+### Development Workflow
+
+1. Create a feature branch from `main`
+2. Make your changes
+3. Create a pull request to `main`
+4. The CI workflows will automatically run to verify your changes
+5. After review and approval, merge your PR to `main`
+
 ## Release Process
 
 To create a new release of the extension:
