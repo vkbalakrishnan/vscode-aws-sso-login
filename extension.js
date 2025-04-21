@@ -7,6 +7,8 @@ const { promisify } = require("util");
 const { SSO } = require("@aws-sdk/client-sso");
 const { SSOOIDC } = require("@aws-sdk/client-sso-oidc");
 
+const outputChannel = vscode.window.createOutputChannel("AWS SSO Login");
+
 const execAsync = promisify(exec);
 
 /**
@@ -24,8 +26,9 @@ async function parseAwsConfig() {
     const configContent = fs.readFileSync(configPath, "utf8");
     const lines = configContent.split("\n");
 
-    const profiles = {};
-    let currentProfile = null;
+    const sections = {};
+    let currentSection = null;
+    let currentSectionType = null;
 
     for (const line of lines) {
       const trimmedLine = line.trim();
@@ -35,42 +38,97 @@ async function parseAwsConfig() {
         continue;
       }
 
-      // Check for profile definition
+      // Check for section definitions
       const profileMatch = trimmedLine.match(/^\[profile\s+(.+)\]$/);
+      const ssoSessionMatch = trimmedLine.match(/^\[sso-session\s+(.+)\]$/);
+      const genericSectionMatch = trimmedLine.match(/^\[(.+)\]$/);
+
       if (profileMatch) {
-        currentProfile = profileMatch[1];
-        profiles[currentProfile] = {};
+        currentSection = profileMatch[1];
+        currentSectionType = "profile";
+        sections[`profile ${currentSection}`] = {};
+        continue;
+      } else if (ssoSessionMatch) {
+        currentSection = ssoSessionMatch[1];
+        currentSectionType = "sso-session";
+        sections[`sso-session ${currentSection}`] = {};
+        continue;
+      } else if (genericSectionMatch && !profileMatch && !ssoSessionMatch) {
+        currentSection = genericSectionMatch[1];
+        currentSectionType = "other";
+        sections[currentSection] = {};
         continue;
       }
 
-      // If we're in a profile section, parse the key-value pairs
-      if (currentProfile) {
+      // If we're in a section, parse the key-value pairs
+      if (currentSection) {
         const kvMatch = trimmedLine.match(/^(\S+)\s*=\s*(.+)$/);
         if (kvMatch) {
           const [, key, value] = kvMatch;
-          profiles[currentProfile][key] = value;
+          sections[`${currentSectionType === "profile" ? "profile " : currentSectionType === "sso-session" ? "sso-session " : ""}${currentSection}`][key] = value;
         }
       }
     }
 
-    // Filter to only include SSO profiles
+    // Process profiles to handle both direct SSO config and sso-session references
     const ssoProfiles = {};
-    for (const [name, config] of Object.entries(profiles)) {
+    
+    for (const [sectionName, config] of Object.entries(sections)) {
+      // Only process profile sections
+      if (!sectionName.startsWith("profile ")) {
+        continue;
+      }
+      
+      const profileName = sectionName.substring("profile ".length);
+      
+      // Case 1: Profile has direct SSO configuration
       if (
         config.sso_start_url &&
         config.sso_region &&
         config.sso_account_id &&
         config.sso_role_name
       ) {
-        ssoProfiles[name] = {
-          name,
+        ssoProfiles[profileName] = {
+          name: profileName,
           startUrl: config.sso_start_url,
           region: config.sso_region,
           accountId: config.sso_account_id,
           roleName: config.sso_role_name,
         };
       }
+      // Case 2: Profile references an sso-session and has account_id and role_name
+      else if (
+        config.sso_session &&
+        config.sso_account_id &&
+        config.sso_role_name
+      ) {
+        const ssoSessionName = config.sso_session;
+        const ssoSessionConfig = sections[`sso-session ${ssoSessionName}`];
+        
+        if (ssoSessionConfig && ssoSessionConfig.sso_start_url && ssoSessionConfig.sso_region) {
+          ssoProfiles[profileName] = {
+            name: profileName,
+            startUrl: ssoSessionConfig.sso_start_url,
+            region: ssoSessionConfig.sso_region,
+            accountId: config.sso_account_id,
+            roleName: config.sso_role_name,
+          };
+        }
+      }
+      // Case 3: Profile references another profile via source_profile
+      else if (config.source_profile && config.role_arn) {
+        const sourceProfileName = config.source_profile;
+        // Check if the source profile is an SSO profile we've already processed
+        if (ssoProfiles[sourceProfileName]) {
+          // We don't add this profile to ssoProfiles as it's not directly an SSO profile
+          // but we could handle it differently if needed
+        }
+      }
     }
+    
+    outputChannel.append(
+      "SSO Profiles: " + JSON.stringify(ssoProfiles, null, 2)
+    );
 
     return ssoProfiles;
   } catch (error) {
@@ -86,7 +144,7 @@ async function parseAwsConfig() {
 async function getAwsSsoProfiles() {
   // Get profiles from AWS config file
   const configProfiles = await parseAwsConfig();
-
+  console.log("Config profiles:", configProfiles);
   // Get profiles from VS Code settings
   const vscodeProfiles =
     vscode.workspace.getConfiguration("awsSsoLogin").get("profiles") || [];
@@ -124,14 +182,94 @@ async function isSsoTokenValid(profile) {
 }
 
 /**
+ * Find the AWS CLI executable path
+ * @returns {Promise<String|null>} Path to AWS CLI or null if not found
+ */
+async function findAwsCliPath() {
+  // Common installation paths for AWS CLI
+  const commonPaths = [
+    "aws", // Default PATH
+    "/usr/local/bin/aws", // Common macOS/Linux location
+    "/usr/bin/aws", // Common Linux location
+    "/opt/homebrew/bin/aws", // Homebrew on Apple Silicon Macs
+    "/usr/local/homebrew/bin/aws", // Homebrew on Intel Macs
+    "C:\\Program Files\\Amazon\\AWSCLI\\bin\\aws.exe", // Windows default
+    "C:\\Program Files (x86)\\Amazon\\AWSCLI\\bin\\aws.exe" // Windows 32-bit on 64-bit
+  ];
+  
+  // Check each path
+  for (const awsPath of commonPaths) {
+    try {
+      await execAsync(`"${awsPath}" --version`);
+      return awsPath;
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+  
+  return null; // AWS CLI not found
+}
+
+/**
+ * Check if AWS CLI is installed and available
+ * @returns {Promise<Boolean>} True if AWS CLI is installed
+ */
+async function isAwsCliInstalled() {
+  const awsPath = await findAwsCliPath();
+  return awsPath !== null;
+}
+
+/**
+ * Show AWS CLI installation instructions based on the operating system
+ */
+function showAwsCliInstallationInstructions() {
+  const platform = os.platform();
+  let message = "AWS CLI is not installed or not in your PATH. ";
+  
+  switch (platform) {
+    case "darwin": // macOS
+      message += "Install it using: 'brew install awscli' or download from AWS website.";
+      break;
+    case "win32": // Windows
+      message += "Download and install from the AWS website or use 'winget install -e --id Amazon.AWSCLI'.";
+      break;
+    case "linux":
+      message += "Install it using your package manager (e.g., 'apt install awscli' or 'yum install awscli') or download from AWS website.";
+      break;
+    default:
+      message += "Please install AWS CLI from: https://aws.amazon.com/cli/";
+  }
+  
+  const installOption = "Installation Instructions";
+  const cancelOption = "Cancel";
+  
+  vscode.window.showErrorMessage(message, installOption, cancelOption).then(selection => {
+    if (selection === installOption) {
+      vscode.env.openExternal(vscode.Uri.parse("https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"));
+    }
+  });
+}
+
+/**
  * Start AWS SSO login process
  * @param {Object} profile The SSO profile
  * @returns {Promise<Boolean>} True if login successful
  */
 async function startSsoLogin(profile) {
   try {
-    // Use AWS CLI to start SSO login
-    const command = `aws sso login --profile ${profile.name}`;
+    // Find AWS CLI path
+    const awsPath = await findAwsCliPath();
+    if (!awsPath) {
+      showAwsCliInstallationInstructions();
+      return false;
+    }
+    
+    // Use AWS CLI to start SSO login with the full path
+    const command = `"${awsPath}" sso login --profile ${profile.name}`;
+    
+    // Log the command being executed for debugging
+    console.log(`Executing AWS CLI command: ${command}`);
+    outputChannel.appendLine(`Executing AWS CLI command: ${command}`);
 
     const result = await vscode.window.withProgress(
       {
@@ -143,13 +281,37 @@ async function startSsoLogin(profile) {
         progress.report({ message: "Opening browser for authentication..." });
 
         try {
-          await execAsync(command);
+          // Execute with environment variables that include common PATH locations
+          const env = { ...process.env };
+          
+          // Add Homebrew paths to PATH if not already included
+          const homebrewPaths = [
+            "/opt/homebrew/bin",
+            "/usr/local/homebrew/bin",
+            "/usr/local/bin"
+          ];
+          
+          const currentPath = env.PATH || "";
+          const additionalPaths = homebrewPaths.filter(p => !currentPath.includes(p)).join(":");
+          
+          if (additionalPaths) {
+            env.PATH = additionalPaths + ":" + currentPath;
+          }
+          
+          await execAsync(command, { env });
           return true;
         } catch (error) {
           console.error("AWS SSO login error:", error);
-          vscode.window.showErrorMessage(
-            `AWS SSO login failed: ${error.message}`
-          );
+          outputChannel.appendLine(`AWS SSO login error: ${error.message}`);
+          
+          // Check if it's a command not found error
+          if (error.message.includes("command not found") || error.message.includes("not recognized")) {
+            showAwsCliInstallationInstructions();
+          } else {
+            vscode.window.showErrorMessage(
+              `AWS SSO login failed: ${error.message}`
+            );
+          }
           return false;
         }
       }
@@ -308,9 +470,9 @@ function formatExpirationTime(date) {
  */
 function activate(context) {
   console.log("AWS SSO Login extension is now active - DEBUG");
-  
+
   // Log all available commands
-  vscode.commands.getCommands().then(commands => {
+  vscode.commands.getCommands().then((commands) => {
     console.log("Available commands:", commands);
   });
 
@@ -332,9 +494,7 @@ function activate(context) {
     "awsSsoLogin.hello",
     function () {
       console.log("Hello command executed");
-      vscode.window.showInformationMessage(
-        "Hello from AWS SSO Login!"
-      );
+      vscode.window.showInformationMessage("Hello from AWS SSO Login!");
     }
   );
 
@@ -355,7 +515,6 @@ function activate(context) {
           );
           return;
         }
-
         // Show quick pick to select profile
         const profileItems = profiles.map((profile) => ({
           label: profile.name,
@@ -417,5 +576,6 @@ function deactivate() {}
 
 module.exports = {
     activate,
-    deactivate
+    deactivate,
+    parseAwsConfig  // Export for testing
 };
