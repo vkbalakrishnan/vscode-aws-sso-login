@@ -11,9 +11,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "*"
-  ],
   "contributes": {
     "commands": [
       {
@@ -89,11 +86,6 @@
   "repository": {
     "type": "git",
     "url": "git@github.com:vkbalakrishnan/vscode-aws-sso-login.git"
-  },
-  "dependencies": {
-    "@aws-sdk/client-sso": "^3.787.0",
-    "@aws-sdk/client-sso-oidc": "^3.787.0",
-    "aws-sdk": "^2.1692.0"
   },
   "devDependencies": {
     "@types/node": "^14.0.0",

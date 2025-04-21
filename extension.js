@@ -4,8 +4,6 @@ const path = require("path");
 const os = require("os");
 const { exec } = require("child_process");
 const { promisify } = require("util");
-const { SSO } = require("@aws-sdk/client-sso");
-const { SSOOIDC } = require("@aws-sdk/client-sso-oidc");
 
 const outputChannel = vscode.window.createOutputChannel("AWS SSO Login");
 
