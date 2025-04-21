@@ -3,8 +3,6 @@ name: Build VSCode Extension
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
   build:
@@ -25,7 +23,6 @@ jobs:
     
     - name: Clean install dependencies
       run: |
-        rm -rf node_modules
         npm install
     
     - name: Compile extension
