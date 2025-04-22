@@ -16,14 +16,6 @@
       {
         "command": "awsSsoLogin.login",
         "title": "AWS SSO: Login with Profile"
-      },
-      {
-        "command": "awsSsoLogin.test",
-        "title": "AWS SSO: Test"
-      },
-      {
-        "command": "awsSsoLogin.hello",
-        "title": "AWS SSO: Hello"
       }
     ],
     "configuration": {

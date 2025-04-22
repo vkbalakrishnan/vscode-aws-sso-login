@@ -474,30 +474,6 @@ function activate(context) {
     console.log("Available commands:", commands);
   });
 
-  // Register the test command
-  let testDisposable = vscode.commands.registerCommand(
-    "awsSsoLogin.test",
-    function () {
-      console.log("Test command executed");
-      vscode.window.showInformationMessage(
-        "AWS SSO Login Test Command Executed!"
-      );
-    }
-  );
-
-  context.subscriptions.push(testDisposable);
-
-  // Register a simple command that just shows a message
-  let helloDisposable = vscode.commands.registerCommand(
-    "awsSsoLogin.hello",
-    function () {
-      console.log("Hello command executed");
-      vscode.window.showInformationMessage("Hello from AWS SSO Login!");
-    }
-  );
-
-  context.subscriptions.push(helloDisposable);
-
   // Register the login command
   let loginDisposable = vscode.commands.registerCommand(
     "awsSsoLogin.login",
