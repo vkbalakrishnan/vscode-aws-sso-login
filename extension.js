@@ -326,130 +326,6 @@ async function startSsoLogin(profile) {
 }
 
 /**
- * Get AWS credentials for the given profile
- * @param {Object} profile The SSO profile
- * @returns {Promise<Object>} The credentials object
- */
-async function getAwsCredentials(profile) {
-  try {
-    const ssoClient = new SSO({
-      region: profile.region,
-    });
-
-    const response = await ssoClient.getRoleCredentials({
-      accountId: profile.accountId,
-      roleName: profile.roleName,
-    });
-
-    const credentials = response.roleCredentials;
-
-    return {
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-      sessionToken: credentials.sessionToken,
-      expiration: new Date(credentials.expiration),
-    };
-  } catch (error) {
-    console.error("Error getting AWS credentials:", error);
-    throw error;
-  }
-}
-
-/**
- * Update AWS credentials file with the given credentials
- * @param {String} profileName The profile name
- * @param {Object} credentials The credentials object
- */
-async function updateAwsCredentialsFile(profileName, credentials) {
-  try {
-    const credentialsPath = path.join(os.homedir(), ".aws", "credentials");
-
-    // Create directory if it doesn't exist
-    const awsDir = path.join(os.homedir(), ".aws");
-    if (!fs.existsSync(awsDir)) {
-      fs.mkdirSync(awsDir);
-    }
-
-    // Read existing credentials file or create empty content
-    let content = "";
-    if (fs.existsSync(credentialsPath)) {
-      content = fs.readFileSync(credentialsPath, "utf8");
-    }
-
-    const lines = content.split("\n");
-    const newLines = [];
-
-    let inTargetProfile = false;
-    let profileFound = false;
-
-    // Process existing content
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-
-      // Check for profile definition
-      const profileMatch = trimmedLine.match(/^\[(.+)\]$/);
-      if (profileMatch) {
-        // If we were in the target profile, we're now exiting it
-        if (inTargetProfile) {
-          inTargetProfile = false;
-        }
-
-        // Check if this is the target profile
-        if (profileMatch[1] === profileName) {
-          profileFound = true;
-          inTargetProfile = true;
-
-          // Add profile header
-          newLines.push(`[${profileName}]`);
-
-          // Add credentials
-          newLines.push(`aws_access_key_id = ${credentials.accessKeyId}`);
-          newLines.push(
-            `aws_secret_access_key = ${credentials.secretAccessKey}`
-          );
-          newLines.push(`aws_session_token = ${credentials.sessionToken}`);
-
-          // Skip to next line to avoid adding the profile header again
-          continue;
-        }
-      }
-
-      // Skip lines in the target profile
-      if (inTargetProfile) {
-        // Skip key-value pairs in the target profile
-        if (trimmedLine.match(/^\S+\s*=\s*.+$/)) {
-          continue;
-        }
-      }
-
-      // Add all other lines
-      newLines.push(line);
-    }
-
-    // If profile wasn't found, add it at the end
-    if (!profileFound) {
-      // Add a blank line if the file doesn't end with one
-      if (newLines.length > 0 && newLines[newLines.length - 1].trim() !== "") {
-        newLines.push("");
-      }
-
-      newLines.push(`[${profileName}]`);
-      newLines.push(`aws_access_key_id = ${credentials.accessKeyId}`);
-      newLines.push(`aws_secret_access_key = ${credentials.secretAccessKey}`);
-      newLines.push(`aws_session_token = ${credentials.sessionToken}`);
-    }
-
-    // Write the updated content back to the file
-    fs.writeFileSync(credentialsPath, newLines.join("\n"));
-
-    return true;
-  } catch (error) {
-    console.error("Error updating AWS credentials file:", error);
-    throw error;
-  }
-}
-
-/**
  * Format expiration time in a human-readable format
  * @param {Date} date The expiration date
  * @returns {String} Formatted expiration time
@@ -518,17 +394,7 @@ function activate(context) {
           }
         }
 
-        // Get credentials
-        const credentials = await getAwsCredentials(profile);
-
-        // Update credentials file
-        await updateAwsCredentialsFile(profile.name, credentials);
-
-        // Show success message with expiration time
-        const expirationTime = formatExpirationTime(credentials.expiration);
-        vscode.window.showInformationMessage(
-          `AWS SSO login successful for profile: ${profile.name}. Credentials will expire in ${expirationTime}.`
-        );
+        vscode.window.showInformationMessage(`AWS SSO login successful`);
       } catch (error) {
         console.error("AWS SSO login error:", error);
         vscode.window.showErrorMessage(
