@@ -2,7 +2,7 @@ const vscode = require('vscode');
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { exec } = require("child_process");
+const { exec, spawn } = require("child_process");
 const { promisify } = require("util");
 
 const outputChannel = vscode.window.createOutputChannel("AWS SSO Login");
@@ -142,7 +142,6 @@ async function parseAwsConfig() {
 async function getAwsSsoProfiles() {
   // Get profiles from AWS config file
   const configProfiles = await parseAwsConfig();
-  console.log("Config profiles:", configProfiles);
   // Get profiles from VS Code settings
   const vscodeProfiles =
     vscode.workspace.getConfiguration("awsSsoLogin").get("profiles") || [];
@@ -160,23 +159,31 @@ async function getAwsSsoProfiles() {
 }
 
 /**
- * Check if SSO token is valid for the given profile
- * @param {Object} profile The SSO profile
- * @returns {Boolean} True if token is valid, false otherwise
+ * Validate that a profile name contains only safe characters
+ * @param {string} name The profile name to validate
+ * @returns {boolean} True if the name is valid
  */
-async function isSsoTokenValid(profile) {
-  try {
-    const ssoClient = new SSO({
-      region: profile.region,
-    });
+function isValidProfileName(name) {
+  return /^[a-zA-Z0-9_.-]+$/.test(name);
+}
 
-    // Try to get account list to verify token is valid
-    await ssoClient.listAccounts({});
-    return true;
-  } catch (error) {
-    console.log("SSO token validation error:", error.message);
-    return false;
+/**
+ * Build environment variables with common PATH locations included
+ * @returns {Object} Environment object with augmented PATH
+ */
+function buildEnvWithPaths() {
+  const env = { ...process.env };
+  const homebrewPaths = [
+    "/opt/homebrew/bin",
+    "/usr/local/homebrew/bin",
+    "/usr/local/bin"
+  ];
+  const currentPath = env.PATH || "";
+  const additionalPaths = homebrewPaths.filter(p => !currentPath.includes(p)).join(":");
+  if (additionalPaths) {
+    env.PATH = additionalPaths + ":" + currentPath;
   }
+  return env;
 }
 
 /**
@@ -206,15 +213,6 @@ async function findAwsCliPath() {
   }
   
   return null; // AWS CLI not found
-}
-
-/**
- * Check if AWS CLI is installed and available
- * @returns {Promise<Boolean>} True if AWS CLI is installed
- */
-async function isAwsCliInstalled() {
-  const awsPath = await findAwsCliPath();
-  return awsPath !== null;
 }
 
 /**
@@ -255,106 +253,124 @@ function showAwsCliInstallationInstructions() {
  */
 async function startSsoLogin(profile) {
   try {
-    // Find AWS CLI path
     const awsPath = await findAwsCliPath();
     if (!awsPath) {
       showAwsCliInstallationInstructions();
       return false;
     }
-    
-    // Use AWS CLI to start SSO login with the full path
-    const command = `"${awsPath}" sso login --profile ${profile.name}`;
-    
-    // Log the command being executed for debugging
-    console.log(`Executing AWS CLI command: ${command}`);
-    outputChannel.appendLine(`Executing AWS CLI command: ${command}`);
+
+    if (!isValidProfileName(profile.name)) {
+      vscode.window.showErrorMessage(
+        `Invalid profile name: "${profile.name}". Profile names must contain only letters, numbers, hyphens, underscores, and periods.`
+      );
+      return false;
+    }
+
+    outputChannel.appendLine(`Starting SSO login for profile: ${profile.name}`);
 
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `Logging in to AWS SSO profile: ${profile.name}`,
-        cancellable: false,
+        title: `AWS SSO: ${profile.name}`,
+        cancellable: true,
       },
-      async (progress) => {
-        progress.report({ message: "Opening browser for authentication..." });
+      async (progress, cancellationToken) => {
+        progress.report({ message: "Starting authentication..." });
 
-        try {
-          // Execute with environment variables that include common PATH locations
-          const env = { ...process.env };
-          
-          // Add Homebrew paths to PATH if not already included
-          const homebrewPaths = [
-            "/opt/homebrew/bin",
-            "/usr/local/homebrew/bin",
-            "/usr/local/bin"
-          ];
-          
-          const currentPath = env.PATH || "";
-          const additionalPaths = homebrewPaths.filter(p => !currentPath.includes(p)).join(":");
-          
-          if (additionalPaths) {
-            env.PATH = additionalPaths + ":" + currentPath;
-          }
-          
-          await execAsync(command, { env });
-          return true;
-        } catch (error) {
-          console.error("AWS SSO login error:", error);
-          outputChannel.appendLine(`AWS SSO login error: ${error.message}`);
-          
-          // Check if it's a command not found error
-          if (error.message.includes("command not found") || error.message.includes("not recognized")) {
-            showAwsCliInstallationInstructions();
-          } else {
-            vscode.window.showErrorMessage(
-              `AWS SSO login failed: ${error.message}`
-            );
-          }
-          return false;
-        }
+        const env = buildEnvWithPaths();
+
+        return new Promise((resolve, reject) => {
+          const child = spawn(
+            awsPath,
+            ['sso', 'login', '--profile', profile.name],
+            { env, stdio: ['inherit', 'pipe', 'pipe'] }
+          );
+
+          let stderr = '';
+          let verificationCodeFound = false;
+
+          cancellationToken.onCancellationRequested(() => {
+            child.kill('SIGTERM');
+            resolve(false);
+          });
+
+          child.stdout.on('data', (data) => {
+            outputChannel.appendLine(data.toString());
+          });
+
+          child.stderr.on('data', (data) => {
+            const text = data.toString();
+            stderr += text;
+            outputChannel.appendLine(text);
+
+            if (!verificationCodeFound) {
+              const codeMatch = text.match(/([A-Z0-9]{4}-[A-Z0-9]{4})/);
+              if (codeMatch) {
+                verificationCodeFound = true;
+                const code = codeMatch[1];
+
+                progress.report({
+                  message: `Verification code: ${code} -- Confirm this matches your browser`
+                });
+
+                vscode.env.clipboard.writeText(code);
+
+                vscode.window.showInformationMessage(
+                  `AWS SSO verification code: ${code} (copied to clipboard)`,
+                  'Copy Code'
+                ).then(selection => {
+                  if (selection === 'Copy Code') {
+                    vscode.env.clipboard.writeText(code);
+                  }
+                });
+              }
+            }
+          });
+
+          child.on('close', (code) => {
+            if (code === 0) {
+              resolve(true);
+            } else {
+              outputChannel.appendLine(`AWS CLI exited with code ${code}`);
+              const errorMsg = stderr.trim() || `AWS CLI exited with code ${code}`;
+              if (errorMsg.includes("command not found") || errorMsg.includes("not recognized")) {
+                showAwsCliInstallationInstructions();
+              } else {
+                vscode.window.showErrorMessage(`AWS SSO login failed: ${errorMsg}`);
+              }
+              resolve(false);
+            }
+          });
+
+          child.on('error', (err) => {
+            outputChannel.appendLine(`AWS SSO login error: ${err.message}`);
+            if (err.message.includes("ENOENT")) {
+              showAwsCliInstallationInstructions();
+            } else {
+              vscode.window.showErrorMessage(`AWS SSO login failed: ${err.message}`);
+            }
+            resolve(false);
+          });
+        });
       }
     );
 
     return result;
   } catch (error) {
-    console.error("Error starting SSO login:", error);
-    vscode.window.showErrorMessage(
-      `Error starting SSO login: ${error.message}`
-    );
+    outputChannel.appendLine(`Error starting SSO login: ${error.message}`);
+    vscode.window.showErrorMessage(`Error starting SSO login: ${error.message}`);
     return false;
   }
-}
-
-/**
- * Format expiration time in a human-readable format
- * @param {Date} date The expiration date
- * @returns {String} Formatted expiration time
- */
-function formatExpirationTime(date) {
-  const now = new Date();
-  const diffMs = date.getTime() - now.getTime();
-  const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-  return `${diffHrs}h ${diffMins}m`;
 }
 
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
-  console.log("AWS SSO Login extension is now active - DEBUG");
-
-  // Log all available commands
-  vscode.commands.getCommands().then((commands) => {
-    console.log("Available commands:", commands);
-  });
-
   // Register the login command
   let loginDisposable = vscode.commands.registerCommand(
     "awsSsoLogin.login",
     async function () {
-      console.log("Login command executed");
       try {
         // Get available profiles
         const profiles = await getAwsSsoProfiles();
@@ -383,20 +399,17 @@ function activate(context) {
 
         const profile = selectedItem.profile;
 
-        // Check if token is valid
-        const isTokenValid = await isSsoTokenValid(profile);
-
-        // If token is not valid, start SSO login
-        if (!isTokenValid) {
-          const loginSuccess = await startSsoLogin(profile);
-          if (!loginSuccess) {
-            return;
-          }
+        // AWS CLI handles token caching internally - if a valid token
+        // exists, it completes instantly without opening a browser
+        const loginSuccess = await startSsoLogin(profile);
+        if (!loginSuccess) {
+          return;
         }
 
-        vscode.window.showInformationMessage(`AWS SSO login successful`);
+        vscode.window.showInformationMessage(
+          `AWS SSO login successful for profile: ${profile.name}`
+        );
       } catch (error) {
-        console.error("AWS SSO login error:", error);
         vscode.window.showErrorMessage(
           `AWS SSO login failed: ${error.message}`
         );
@@ -405,11 +418,6 @@ function activate(context) {
   );
 
   context.subscriptions.push(loginDisposable);
-
-  // Show notification that extension is ready
-  vscode.window.showInformationMessage(
-    'AWS SSO Login extension is ready. Try running the "AWS SSO: Login with Profile" command.'
-  );
 }
 
 function deactivate() {}
