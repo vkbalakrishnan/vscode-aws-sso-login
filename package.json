@@ -1,7 +1,7 @@
 {
   "name": "aws-sso-login",
   "displayName": "AWS SSO Login",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "VS Code extension to login to AWS SSO with a specific profile",
   "main": "./extension.js",
   "publisher": "aws-sso-login",
