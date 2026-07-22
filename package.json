@@ -81,7 +81,7 @@
     "url": "git@github.com:vkbalakrishnan/vscode-aws-sso-login.git"
   },
   "devDependencies": {
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.1.1",
     "@types/vscode": "1.99.1",
     "@vscode/vsce": "^3.9.2"
   }
