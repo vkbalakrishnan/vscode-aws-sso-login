@@ -13,6 +13,7 @@ This VS Code extension allows you to easily log in to AWS SSO with a specific pr
 
 - AWS CLI installed and configured
 - AWS SSO access configured
+- Node.js 24 LTS when building from source
 
 ## Installation
 
@@ -28,9 +29,10 @@ This VS Code extension allows you to easily log in to AWS SSO with a specific pr
 ### Building from Source
 
 1. Clone this repository
-2. Run `npm install` to install dependencies
-3. Run `vsce package` to create a `.vsix` file
-4. Follow the steps above to install the `.vsix` file
+2. Run `nvm use` to select the supported Node.js version
+3. Run `npm ci` to install dependencies
+4. Run `npm run package` to create a `.vsix` file
+5. Follow the steps above to install the `.vsix` file
 
 ## Configuration
 
@@ -103,7 +105,7 @@ This project uses GitHub Actions for continuous integration and delivery:
 - **Build**: Runs on every push to main and pull requests. Compiles and packages the extension.
 - **Lint and Test**: Verifies code quality and runs tests.
 - **Release**: Triggered when a tag is pushed. Creates a GitHub release with the packaged extension.
-- **Dependency Updates**: Runs weekly to check for dependency updates and creates PRs if needed.
+- **Dependency Updates**: Dependabot checks npm and GitHub Actions dependencies weekly and creates PRs when updates are available.
 - **CodeQL Analysis**: Performs security analysis on the codebase.
 - **Stale Issues**: Automatically manages stale issues and pull requests.
 

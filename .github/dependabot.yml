@@ -1,0 +1,28 @@
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "00:00"
+      timezone: Etc/UTC
+    groups:
+      development-dependencies:
+        dependency-type: development
+    ignore:
+      # Keep API typings aligned with the minimum supported VS Code release.
+      - dependency-name: "@types/vscode"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "00:00"
+      timezone: Etc/UTC
+    groups:
+      github-actions:
+        patterns:
+          - "*"

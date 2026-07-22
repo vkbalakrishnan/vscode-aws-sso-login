@@ -19,10 +19,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       
     - name: Download extension artifact
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: aws-sso-login-extension
         path: ./
@@ -32,7 +32,7 @@ jobs:
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
     
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         name: AWS SSO Login v${{ steps.get_version.outputs.VERSION }}
         draft: false
@@ -44,9 +44,9 @@ jobs:
     
     # Uncomment and use this step when ready to publish to VSCode Marketplace
     # - name: Setup Node.js
-    #   uses: actions/setup-node@v4
+    #   uses: actions/setup-node@v7
     #   with:
-    #     node-version: 20
+    #     node-version-file: .nvmrc
     
     # - name: Publish to Visual Studio Marketplace
     #   run: npx @vscode/vsce publish -p ${{ secrets.VSCE_PAT }}
